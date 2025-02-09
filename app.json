@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "worldle",
-    "slug": "worldle",
+    "name": "word game",
+    "slug": "word-game",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -16,7 +16,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "dev.vtvinh24.worldle"
+      "package": "dev.vtvinh24.wordgame"
     },
     "web": {
       "bundler": "metro",
