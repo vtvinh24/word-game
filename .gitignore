@@ -34,13 +34,3 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
-
-app-example
-
-*.local.*
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-*.log
