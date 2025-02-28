@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Word Game",
+    "slug": "word-game",
+    "version": "1.0.0",
+    "android": {
+      "package": "dev.vtvinh24.wordgame",
+      "permissions": ["CAMERA", "RECORD_AUDIO", "android.permission.CAMERA", "android.permission.RECORD_AUDIO"]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "buildToolsVersion": "35.0.0"
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ]
+    ],
+    "ios": {
+      "bundleIdentifier": "dev.vtvinh24.wordgame"
+    }
+  }
+}
