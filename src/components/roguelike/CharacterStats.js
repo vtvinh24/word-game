@@ -1,7 +1,21 @@
 import React from "react";
 import { View, Text, StyleSheet, ProgressBar } from "react-native";
 
-const CharacterStats = ({ character }) => {
+const CharacterStats = (props) => {
+  // Handle both prop styles: either a character object or individual props
+  const character = props.character || {
+    name: props.name || "Player",
+    level: props.level || 1,
+    health: props.health || 0,
+    maxHealth: props.maxHealth || 100,
+    mana: props.mana || 0,
+    maxMana: props.maxMana || 100,
+    strength: props.strength || 0,
+    intelligence: props.intelligence || 0,
+    dexterity: props.dexterity || 0,
+    experience: props.experience || 0,
+    nextLevelExp: props.nextLevelExp || 100,
+  };
   const { name, level, health, maxHealth, mana, maxMana, strength, intelligence, dexterity, experience, nextLevelExp } = character;
 
   const renderStatBar = (label, current, max, color) => {

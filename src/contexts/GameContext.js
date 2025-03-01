@@ -133,3 +133,7 @@ export const GameProvider = ({ children }) => {
     </GameContext.Provider>
   );
 };
+
+const useGameContext = () => React.useContext(GameContext);
+
+export { useGameContext };

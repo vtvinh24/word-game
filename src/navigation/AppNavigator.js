@@ -25,6 +25,7 @@ import GameOverScreen from "../screens/game/GameOver";
 
 // Settings Screen
 import SettingsScreen from "../screens/settings/Settings";
+import SinglePlayerBattle from "../screens/game/SinglePlayerBattle";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -34,6 +35,11 @@ const GameStack = () => (
     <Stack.Screen
       name="Lobby"
       component={LobbyScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="Singleplayer"
+      component={SinglePlayerBattle}
       options={{ headerShown: false }}
     />
     <Stack.Screen
