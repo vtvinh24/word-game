@@ -17,7 +17,7 @@ export default function SkillCard({ skill, onSelect, isSelected, disabled }) {
 
   const getSkillIcon = () => {
     if (!skill.iconId) return null;
-    return SKILL_ICONS[skill.iconId] || SKILL_ICONS["default.webp"];
+    return SKILL_ICONS[skill.iconId] || SKILL_ICONS["default"];
   };
 
   return (

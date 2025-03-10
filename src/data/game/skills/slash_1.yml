@@ -1,0 +1,11 @@
+name: "Quick Slash"
+description: "A swift attack that deals damage based on your dexterity."
+cost: "1v"
+target: "single"
+conditions:
+  - "target.count = 1"
+  - "target.position = 'front'"
+pattern: "action_verbs"
+effectMin: 0.5
+effectMax: 1.2
+iconId: "slash_1.webp"

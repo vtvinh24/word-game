@@ -1,170 +1,249 @@
-import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Animated, ActivityIndicator } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
-import CharacterStats from "../../components/roguelike/CharacterStats";
-import SkillCard from "../../components/roguelike/SkillCard";
-import NarratorBox from "../../components/roguelike/NarratorBox";
+import React, { useEffect, useRef } from "react";
+import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Animated, ActivityIndicator } from "react-native";
 import { useGameContext } from "../../contexts/GameContext";
+import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 
 export default function SinglePlayerBattle({ navigation }) {
-  const { gameState, updateGameState, endGame } = useGameContext();
-  const [playerStats, setPlayerStats] = useState(
-    gameState.playerStats || {
-      health: 100,
-      maxHealth: 100,
-      mana: 50,
-      maxMana: 50,
-      level: 1,
-      experience: 0,
-      nextLevelExp: 100,
-      name: "Player",
-    }
-  );
+  const { gameState, updateGameState, endGame, generateBattleEnemies, updateBattleState, setBattleNarration, processEntityStatusEffects } = useGameContext();
 
-  const [enemies, setEnemies] = useState([]);
-  const [selectedEnemy, setSelectedEnemy] = useState(null);
-  const [skills, setSkills] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedSkill, setSelectedSkill] = useState(null);
-  const [narration, setNarration] = useState("Prepare for battle! Select a skill and target an enemy.");
-  const [turnInProgress, setTurnInProgress] = useState(false);
+  // const {
+  //   playerStats,
+  //   battleState = {
+  //     enemies: [],
+  //     selectedEnemy: null,
+  //     skills: [],
+  //     selectedSkill: null,
+  //     narration: "Prepare for battle! Select a skill and target an enemy.",
+  //     turnInProgress: false,
+  //     recentSkills: [],
+  //     statusMessages: [],
+  //     skillCooldowns: {},
+  //     turnCount: 1,
+  //     battleLog: [],
+  //     isLoading: true,
+  //   },
+  // } = gameState;
+  const { playerStats, battleState } = gameState;
+
+  const { enemies, selectedEnemy, skills, selectedSkill, narration, turnInProgress, recentSkills, statusMessages, skillCooldowns, turnCount, battleLog, isLoading } = battleState || {};
+
   const animation = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    setIsLoading(true);
-
-    try {
-      // Load enemies based on game level
-      const gameLevel = gameState.currentLevel || 1;
-      const enemyCount = Math.min(1 + Math.floor(gameLevel / 2), 6);
-
-      const generatedEnemies = Array(enemyCount)
-        .fill()
-        .map((_, index) => {
-          return generateEnemy(gameState.playerStats?.level || 1, index);
-        });
-
-      setEnemies(generatedEnemies);
-
-      // Load skills from factory
-      const availableSkills = loadSkills();
-      if (Array.isArray(availableSkills) && availableSkills.length > 0) {
-        setSkills(availableSkills);
-      } else {
-        // Fallback skills if loadSkills fails
-        setSkills([
-          {
-            id: "basic-attack",
-            name: "Basic Attack",
-            description: "A simple attack",
-            cost: "word",
-            effectMin: 5,
-            effectMax: 10,
-            type: "damage",
-          },
-        ]);
-        console.warn("Failed to load skills, using fallback");
+    // Initialize battle when component mounts
+    const initBattle = async () => {
+      try {
+        await generateBattleEnemies(playerStats.level);
+      } catch (error) {
+        console.error("Error initializing battle:", error);
+        setBattleNarration("Error loading battle resources!");
       }
-    } catch (error) {
-      console.error("Error loading battle data:", error);
-      setNarration("Something went wrong. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-
-    return () => {
-      // Cleanup
     };
+
+    if (battleState.isLoading) {
+      initBattle();
+    }
   }, []);
 
-  // Generate a single enemy
-  const generateEnemy = (playerLevel, position) => {
-    const enemyTypes = [
-      {
-        name: "Goblin",
-        health: 30 + playerLevel * 8,
-        maxHealth: 30 + playerLevel * 8,
-        strength: 4 + playerLevel * 1.5,
-        imageUrl: "https://via.placeholder.com/100",
-      },
-      {
-        name: "Orc",
-        health: 60 + playerLevel * 12,
-        maxHealth: 60 + playerLevel * 12,
-        strength: 6 + playerLevel * 2,
-        imageUrl: "https://via.placeholder.com/100",
-      },
-      {
-        name: "Troll",
-        health: 100 + playerLevel * 15,
-        maxHealth: 100 + playerLevel * 15,
-        strength: 8 + playerLevel * 3,
-        imageUrl: "https://via.placeholder.com/100",
-      },
-    ];
-
-    const randomType = Math.floor(Math.random() * enemyTypes.length);
-    return {
-      ...enemyTypes[randomType],
-      id: `enemy-${position}`,
-      position: position,
-    };
-  };
-
   const handleSkillSelect = (skill) => {
-    setSelectedSkill(skill);
-    setNarration(`Selected ${skill.name}. Now choose a target.`);
-  };
-
-  const handleEnemySelect = (enemy) => {
-    if (!selectedSkill) {
-      setNarration("Select a skill first!");
+    // If skill is on cooldown, show message
+    if (skillCooldowns[skill.id] && skillCooldowns[skill.id] > 0) {
+      setBattleNarration(`${skill.name} is on cooldown for ${skillCooldowns[skill.id]} more turns.`);
       return;
     }
 
-    setSelectedEnemy(enemy);
-    executeSkill(selectedSkill, enemy);
+    // If not enough mana, show message
+    if (skill.manaCost && playerStats.mana < skill.manaCost) {
+      setBattleNarration(`Not enough mana to use ${skill.name}. Need ${skill.manaCost} mana.`);
+      return;
+    }
+
+    // Store the selected skill in a local variable for immediate use
+    const newSelectedSkill = skill;
+
+    updateBattleState({ selectedSkill: newSelectedSkill });
+    setBattleNarration(`Selected skill: ${newSelectedSkill.name}. Now choose a target.`);
+
+    // If skill targets all enemies or doesn't need a target, execute immediately
+    if (newSelectedSkill.targetType === "all_enemies") {
+      executeSkill(
+        newSelectedSkill,
+        enemies.filter((e) => e.health > 0)
+      );
+    } else if (newSelectedSkill.targetType === "self") {
+      executeSkill(newSelectedSkill, playerStats);
+    }
+    console.log(`Selected ${skill.name}`);
+  };
+
+  const handleEnemySelect = (enemy) => {
+    // Use the battle state's selectedSkill directly and make sure it exists
+    const currentSelectedSkill = battleState.selectedSkill;
+    console.log(`Current selected skill: ${currentSelectedSkill}`);
+
+    if (!currentSelectedSkill) {
+      setBattleNarration("Select a skill first!");
+      return;
+    }
+
+    if (enemy.health <= 0) {
+      setBattleNarration("This enemy has already been defeated!");
+      return;
+    }
+
+    updateBattleState({ selectedEnemy: enemy });
+    executeSkill(currentSelectedSkill, enemy);
+  };
+
+  // Helper function to update recent skills
+  const updateRecentSkills = (usedSkill) => {
+    // Keep track of recently used skills (for quick casting)
+    const skillExists = recentSkills.find((s) => s.id === usedSkill.id);
+    if (!skillExists) {
+      // Add to recent skills (up to 3)
+      const updated = [usedSkill, ...recentSkills.slice(0, 2)];
+      updateBattleState({ recentSkills: updated });
+    }
+  };
+
+  // Process turn for all entities (player and enemies)
+  const processTurn = () => {
+    const messages = [];
+    const updatedEnemies = [...enemies];
+    let updatedPlayerStats = { ...playerStats };
+
+    // 1. Process player status effects
+    if (Array.isArray(playerStats.statusEffects) && playerStats.statusEffects.length > 0) {
+      const playerEffectResults = processEntityStatusEffects(playerStats);
+      updatedPlayerStats = playerEffectResults.entity;
+      messages.push(...playerEffectResults.messages);
+    }
+
+    // 2. Process enemy status effects
+    updatedEnemies.forEach((enemy, index) => {
+      if (enemy.health <= 0) return; // Skip dead enemies
+
+      if (Array.isArray(enemy.statusEffects) && enemy.statusEffects.length > 0) {
+        const enemyEffectResults = processEntityStatusEffects(enemy);
+        updatedEnemies[index] = enemyEffectResults.entity;
+        messages.push(...enemyEffectResults.messages);
+      }
+    });
+
+    // 3. Decrement skill cooldowns
+    const updatedCooldowns = { ...skillCooldowns };
+    Object.keys(updatedCooldowns).forEach((skillId) => {
+      if (updatedCooldowns[skillId] > 0) {
+        updatedCooldowns[skillId]--;
+      }
+    });
+
+    // 4. Update game state with processed entities
+    updateGameState({
+      ...gameState,
+      playerStats: updatedPlayerStats,
+      battleState: {
+        ...battleState,
+        enemies: updatedEnemies,
+        skillCooldowns: updatedCooldowns,
+        statusMessages: messages,
+      },
+    });
+
+    // 5. Check for any deaths from status effects
+    const defeatedFromEffects = updatedEnemies.filter((e) => e.health <= 0 && e.health > 0);
+    if (defeatedFromEffects.length > 0) {
+      const defeatMessage = `${defeatedFromEffects.map((e) => e.name).join(", ")} ${defeatedFromEffects.length === 1 ? "was" : "were"} defeated by status effects!`;
+      messages.push(defeatMessage);
+
+      // Check if all enemies are defeated
+      if (updatedEnemies.every((e) => e.health <= 0)) {
+        handleVictory();
+        return;
+      }
+    }
+
+    // If player died from status effects
+    if (updatedPlayerStats.health <= 0 && playerStats.health > 0) {
+      messages.push("You succumbed to your wounds!");
+      handleDefeat();
+      return;
+    }
+
+    // Update narration and battle log
+    if (messages.length > 0) {
+      setBattleNarration(messages.join(" "));
+
+      const updatedLog = [...battleLog, { turn: turnCount, messages }];
+
+      updateBattleState({
+        battleLog: updatedLog,
+        turnCount: turnCount + 1,
+        turnInProgress: false,
+      });
+    } else {
+      updateBattleState({
+        turnCount: turnCount + 1,
+        turnInProgress: false,
+      });
+    }
   };
 
   const executeSkill = (skill, target) => {
-    setTurnInProgress(true);
+    updateBattleState({ turnInProgress: true });
 
-    // Calculate damage based on skill and word input
-    setNarration(`Enter a ${skill.cost} to execute ${skill.name}!`);
+    // Use the Skill class methods directly
+    const result = skill.use(playerStats, target);
 
-    // This would be replaced with actual word input validation
-    const damageDealt = Math.floor(Math.random() * (skill.effectMax - skill.effectMin) + skill.effectMin) * 10;
+    if (!result.success) {
+      setBattleNarration(result.message || "Could not use that skill!");
+      updateBattleState({ turnInProgress: false });
+      return;
+    }
 
-    // Apply damage to target
-    const updatedEnemies = enemies.map((e) => {
-      if (e.id === target.id) {
-        return {
-          ...e,
-          health: Math.max(0, e.health - damageDealt),
-        };
-      }
-      return e;
+    // Update player stats
+    updateGameState({
+      ...gameState,
+      playerStats: {
+        ...playerStats,
+        mana: Math.max(0, playerStats.mana - skill.manaCost),
+      },
     });
+
+    // Set skill on cooldown
+    updateBattleState({
+      skillCooldowns: {
+        ...skillCooldowns,
+        [skill.id]: skill.cooldown,
+      },
+    });
+
+    // Update recent skills
+    updateRecentSkills(skill);
+
+    // Process results
+    const narrativeText = result.results.map((r) => r.effects.map((e) => e.message).join(" ")).join(" ");
+    setBattleNarration(narrativeText);
 
     // Animate attack
     animateAttack(() => {
-      setEnemies(updatedEnemies);
-      setNarration(`You used ${skill.name} and dealt ${damageDealt} damage!`);
+      // Check if any enemies defeated
+      const updatedEnemies = [...enemies];
+      const defeatedEnemies = updatedEnemies.filter((e) => e.health <= 0);
 
-      // Check if enemy defeated
-      const targetEnemy = updatedEnemies.find((e) => e.id === target.id);
-      if (targetEnemy.health <= 0) {
-        setNarration(`${target.name} has been defeated!`);
+      if (defeatedEnemies.length > 0) {
+        const defeatedNames = defeatedEnemies.map((e) => e.name).join(", ");
+        setBattleNarration((prev) => `${prev} ${defeatedNames} has been defeated!`);
 
         // Check if all enemies defeated
-        const remainingEnemies = updatedEnemies.filter((e) => e.health > 0);
-        if (remainingEnemies.length === 0) {
+        if (updatedEnemies.every((e) => e.health <= 0)) {
           handleVictory();
           return;
         }
       }
 
-      // Enemy turn
+      // Process turn and enemy attacks
+      processTurn();
       setTimeout(() => {
         handleEnemyTurn(updatedEnemies.filter((e) => e.health > 0));
       }, 1000);
@@ -172,69 +251,92 @@ export default function SinglePlayerBattle({ navigation }) {
   };
 
   const animateAttack = (callback) => {
-    Animated.sequence([
-      Animated.timing(animation, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(animation, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(callback);
+    animation.setValue(0);
+    Animated.timing(animation, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start(callback);
   };
 
   const handleEnemyTurn = (activeEnemies) => {
     if (activeEnemies.length === 0) {
-      setTurnInProgress(false);
+      updateBattleState({ turnInProgress: false });
       return;
     }
 
     // Each enemy attacks
     let totalDamage = 0;
+    const attackMessages = [];
     activeEnemies.forEach((enemy) => {
       const enemyDamage = Math.floor(enemy.strength * (0.8 + Math.random() * 0.4));
       totalDamage += enemyDamage;
+      attackMessages.push(`${enemy.name} attacks for ${enemyDamage} damage!`);
     });
 
-    // Apply damage to player
+    // Update player health
     const updatedHealth = Math.max(0, playerStats.health - totalDamage);
-    setPlayerStats({
-      ...playerStats,
-      health: updatedHealth,
+    updateGameState({
+      ...gameState,
+      playerStats: {
+        ...playerStats,
+        health: updatedHealth,
+      },
     });
 
-    setNarration(`Enemies attack! You take ${totalDamage} damage.`);
+    setBattleNarration(attackMessages.join(" "));
 
     // Check if player defeated
     if (updatedHealth <= 0) {
       handleDefeat();
     } else {
-      setTurnInProgress(false);
-      setSelectedSkill(null);
-      setSelectedEnemy(null);
+      // Process status effects at the end of enemy turn
+      setTimeout(() => {
+        processTurn();
+        updateBattleState({
+          selectedSkill: null,
+          selectedEnemy: null,
+        });
+      }, 1000);
     }
   };
 
   const handleVictory = () => {
-    setNarration("Victory! All enemies defeated.");
+    setBattleNarration("Victory! All enemies defeated.");
 
-    // Update game state
+    // Experience gain based on enemy levels
+    const expGain = enemies.reduce((total, enemy) => {
+      return total + (enemy.level || 1) * 10;
+    }, 50);
+
+    // Check if player levels up
+    const updatedPlayerStats = { ...playerStats };
+    updatedPlayerStats.experience += expGain;
+
+    // Level up check
+    if (updatedPlayerStats.experience >= updatedPlayerStats.nextLevelExp) {
+      updatedPlayerStats.level += 1;
+      updatedPlayerStats.experience -= updatedPlayerStats.nextLevelExp;
+      updatedPlayerStats.nextLevelExp = Math.floor(updatedPlayerStats.nextLevelExp * 1.5);
+      updatedPlayerStats.maxHealth += 20;
+      updatedPlayerStats.health = updatedPlayerStats.maxHealth;
+      updatedPlayerStats.maxMana += 10;
+      updatedPlayerStats.mana = updatedPlayerStats.maxMana;
+      updatedPlayerStats.strength += 2;
+      updatedPlayerStats.intelligence += 2;
+      updatedPlayerStats.dexterity += 2;
+
+      setBattleNarration(`Victory! Gained ${expGain} XP. Level Up! You are now level ${updatedPlayerStats.level}!`);
+    } else {
+      setBattleNarration(`Victory! Gained ${expGain} XP.`);
+    }
+
     updateGameState({
       ...gameState,
-      victories: (gameState.victories || 0) + 1,
-      playerStats: {
-        ...playerStats,
-        experience: playerStats.experience + 50,
-      },
+      playerStats: updatedPlayerStats,
+      score: gameState.score + 100,
+      enemiesDefeated: (gameState.enemiesDefeated || 0) + enemies.length,
     });
-
-    // Check for level up
-    if (playerStats.experience + 50 >= playerStats.nextLevelExp) {
-      handleLevelUp();
-    }
 
     setTimeout(() => {
       navigation.navigate("Victory");
@@ -242,32 +344,40 @@ export default function SinglePlayerBattle({ navigation }) {
   };
 
   const handleDefeat = () => {
-    setNarration("Defeat! You have been overwhelmed.");
+    setBattleNarration("You have been defeated!");
 
-    endGame();
+    updateGameState({
+      ...gameState,
+      playerStats: {
+        ...playerStats,
+        health: 0,
+      },
+    });
 
     setTimeout(() => {
+      endGame();
       navigation.navigate("GameOver");
     }, 2000);
   };
 
-  const handleLevelUp = () => {
-    const newLevel = playerStats.level + 1;
-    const newMaxHealth = playerStats.maxHealth + 20;
-    const newMaxMana = playerStats.maxMana + 10;
+  // Render status effects in the UI
+  const renderStatusEffects = (entity) => {
+    if (!entity.statusEffects || entity.statusEffects.length === 0) return null;
 
-    setPlayerStats({
-      ...playerStats,
-      level: newLevel,
-      maxHealth: newMaxHealth,
-      health: newMaxHealth,
-      maxMana: newMaxMana,
-      mana: newMaxMana,
-      experience: 0,
-      nextLevelExp: playerStats.nextLevelExp + 50,
-    });
-
-    setNarration(`Level Up! You are now level ${newLevel}!`);
+    return (
+      <View style={styles.statusEffectsContainer}>
+        {entity.statusEffects.map((effect, idx) => (
+          <View
+            key={idx}
+            style={[styles.statusEffect, effect.type === "poison" && styles.poisonEffect, effect.type === "heal" && styles.healEffect, effect.type === "burn" && styles.burnEffect]}
+          >
+            <Text style={styles.statusEffectText}>
+              {effect.name} ({effect.duration})
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
   };
 
   const enemyShakeAnimation = animation.interpolate({
@@ -275,130 +385,199 @@ export default function SinglePlayerBattle({ navigation }) {
     outputRange: [0, 10, 0],
   });
 
-  // Function to load skills - would typically come from a service
-  const loadSkills = () => {
-    return [
-      {
-        id: "skill-1",
-        name: "Fireball",
-        description: "Launch a ball of fire at your enemy",
-        cost: "long word",
-        effectMin: 8,
-        effectMax: 15,
-        type: "damage",
-        icon: "🔥",
-      },
-      {
-        id: "skill-2",
-        name: "Quick Strike",
-        description: "A fast attack with moderate damage",
-        cost: "short word",
-        effectMin: 5,
-        effectMax: 10,
-        type: "damage",
-        icon: "⚔️",
-      },
-      {
-        id: "skill-3",
-        name: "Heal",
-        description: "Restore some health points",
-        cost: "health word",
-        effectMin: 10,
-        effectMax: 20,
-        type: "heal",
-        icon: "❤️",
-      },
-    ];
-  };
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator
+          size="large"
+          color="#7d5fff"
+        />
+        <Text>Preparing for battle...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
+      {/* Player Stats Section */}
       <View style={styles.playerSection}>
-        <CharacterStats character={playerStats} />
+        <Text style={styles.playerName}>
+          {playerStats.name} - Level {playerStats.level}
+        </Text>
+        <View style={styles.statsRow}>
+          <View style={styles.statBar}>
+            <View style={[styles.healthBar, { width: "100%" }]}>
+              <View style={[styles.healthFill, { width: `${(playerStats.health / playerStats.maxHealth) * 100}%` }]} />
+            </View>
+            <Text style={styles.statText}>
+              HP: {playerStats.health}/{playerStats.maxHealth}
+            </Text>
+          </View>
+          <View style={styles.statBar}>
+            <View style={[styles.manaBar, { width: "100%" }]}>
+              <View style={[styles.manaFill, { width: `${(playerStats.mana / playerStats.maxMana) * 100}%` }]} />
+            </View>
+            <Text style={styles.statText}>
+              MP: {playerStats.mana}/{playerStats.maxMana}
+            </Text>
+          </View>
+        </View>
+        {renderStatusEffects(playerStats)}
       </View>
 
-      <View style={styles.battleSection}>
-        <NarratorBox message={narration} />
+      {/* Enemy Section */}
+      <View style={styles.enemiesContainer}>
+        {enemies.map((enemy, index) => (
+          <TouchableOpacity
+            key={enemy.id}
+            onPress={() => !turnInProgress && handleEnemySelect(enemy)}
+            disabled={turnInProgress || enemy.health <= 0}
+          >
+            <Animated.View
+              style={[
+                styles.enemyCard,
+                enemy.health <= 0 && styles.defeatedEnemy,
+                selectedEnemy?.id === enemy.id && {
+                  transform: [{ translateX: enemyShakeAnimation }],
+                },
+              ]}
+            >
+              <Image
+                source={{ uri: enemy.imageUrl }}
+                style={styles.enemyImage}
+              />
+              <Text style={styles.enemyName}>{enemy.name}</Text>
+              <View style={styles.healthBar}>
+                <View style={[styles.healthFill, { width: `${(enemy.health / enemy.maxHealth) * 100}%` }]} />
+              </View>
+              <Text style={styles.healthText}>
+                {enemy.health}/{enemy.maxHealth}
+              </Text>
+              {renderStatusEffects(enemy)}
+            </Animated.View>
+          </TouchableOpacity>
+        ))}
+      </View>
 
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator
-              size="large"
-              color="#7d5fff"
-            />
-            <Text>Preparing battle...</Text>
-          </View>
-        ) : (
-          <View style={styles.enemiesContainer}>
-            {enemies.map((enemy, index) => (
+      {/* Narrator Section */}
+      <View style={styles.narratorSection}>
+        <Text style={styles.narratorText}>{narration}</Text>
+      </View>
+
+      {/* Skills Section */}
+      <View style={styles.skillsSection}>
+        <Text style={styles.sectionTitle}>Skills</Text>
+        <ScrollView
+          horizontal
+          style={styles.skillsScrollView}
+          showsHorizontalScrollIndicator={false}
+        >
+          {skills.length > 0 ? (
+            skills.map((skill) => (
               <TouchableOpacity
-                key={enemy.id}
-                onPress={() => !turnInProgress && handleEnemySelect(enemy)}
-                disabled={turnInProgress || enemy.health <= 0}
+                key={skill.id}
+                style={[
+                  styles.skillButton,
+                  selectedSkill?.id === skill.id && styles.selectedSkill,
+                  skillCooldowns[skill.id] > 0 && styles.cooldownSkill,
+                  skill.manaCost > playerStats.mana && styles.unavailableSkill,
+                ]}
+                onPress={() => !turnInProgress && handleSkillSelect(skill)}
+                disabled={turnInProgress || skillCooldowns[skill.id] > 0 || skill.manaCost > playerStats.mana}
               >
-                <Animated.View
-                  style={[
-                    styles.enemyCard,
-                    enemy.health <= 0 && styles.defeatedEnemy,
-                    selectedEnemy?.id === enemy.id && {
-                      transform: [{ translateX: enemyShakeAnimation }],
-                    },
-                  ]}
-                >
-                  <Image
-                    source={{ uri: enemy.imageUrl }}
-                    style={styles.enemyImage}
-                  />
-                  <Text style={styles.enemyName}>{enemy.name}</Text>
-                  <View style={styles.healthBar}>
-                    <View style={[styles.healthFill, { width: `${(enemy.health / enemy.maxHealth) * 100}%` }]} />
+                <Text style={styles.skillName}>{skill.name}</Text>
+                {skill.manaCost > 0 && <Text style={styles.skillCost}>MP: {skill.manaCost}</Text>}
+                {skillCooldowns[skill.id] > 0 && (
+                  <View style={styles.cooldownOverlay}>
+                    <Text style={styles.cooldownText}>{skillCooldowns[skill.id]}</Text>
                   </View>
-                  <Text style={styles.healthText}>
-                    {enemy.health}/{enemy.maxHealth}
-                  </Text>
-                </Animated.View>
+                )}
+              </TouchableOpacity>
+            ))
+          ) : (
+            <Text style={styles.noSkillsText}>No skills available</Text>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Quick Skills (Recent) */}
+      {recentSkills.length > 0 && (
+        <View style={styles.quickSkillsSection}>
+          <Text style={styles.sectionTitle}>Quick Cast</Text>
+          <View style={styles.quickSkillsContainer}>
+            {recentSkills.map((skill) => (
+              <TouchableOpacity
+                key={`quick-${skill.id}`}
+                style={[styles.quickSkillButton, skillCooldowns[skill.id] > 0 && styles.cooldownSkill, skill.manaCost > playerStats.mana && styles.unavailableSkill]}
+                onPress={() => !turnInProgress && handleSkillSelect(skill)}
+                disabled={turnInProgress || skillCooldowns[skill.id] > 0 || skill.manaCost > playerStats.mana}
+              >
+                <Text style={styles.quickSkillName}>{skill.name}</Text>
+                {skillCooldowns[skill.id] > 0 && (
+                  <View style={styles.cooldownOverlay}>
+                    <Text style={styles.cooldownText}>{skillCooldowns[skill.id]}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))}
           </View>
-        )}
-      </View>
+        </View>
+      )}
 
-      <View style={styles.skillsSection}>
-        <Text style={styles.sectionTitle}>Skills</Text>
-        {isLoading ? (
-          <ActivityIndicator
-            size="small"
-            color="#7d5fff"
+      {/* Battle Controls */}
+      <View style={styles.gameNavigation}>
+        <TouchableOpacity
+          style={[styles.navButton, styles.inventoryButton]}
+          onPress={() => navigation.navigate("Inventory")}
+          disabled={turnInProgress}
+        >
+          <Icon
+            name="backpack"
+            size={16}
+            color="white"
           />
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-          >
-            {skills.length > 0 ? (
-              skills.map((skill) => (
-                <SkillCard
-                  key={skill.id}
-                  skill={skill}
-                  onSelect={() => !turnInProgress && handleSkillSelect(skill)}
-                  isSelected={selectedSkill?.id === skill.id}
-                  disabled={turnInProgress}
-                />
-              ))
-            ) : (
-              <Text style={styles.noSkillsText}>No skills available</Text>
-            )}
-          </ScrollView>
-        )}
-      </View>
+          <Text style={styles.navButtonText}>Items</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        style={[styles.fleeButton, isLoading && styles.disabledButton]}
-        onPress={() => navigation.navigate("Lobby")}
-        disabled={isLoading || turnInProgress}
-      >
-        <Text style={styles.fleeButtonText}>Flee Battle</Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.navButton, styles.skillsButton]}
+          onPress={() => navigation.navigate("Skills")}
+          disabled={turnInProgress}
+        >
+          <Icon
+            name="sword"
+            size={16}
+            color="white"
+          />
+          <Text style={styles.navButtonText}>Skills</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.navButton, styles.statsButton]}
+          onPress={() => navigation.navigate("CharacterStats")}
+          disabled={turnInProgress}
+        >
+          <Icon
+            name="account"
+            size={16}
+            color="white"
+          />
+          <Text style={styles.navButtonText}>Stats</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.navButton, styles.fleeButton, turnInProgress && styles.disabledButton]}
+          onPress={() => navigation.navigate("Map")}
+          disabled={turnInProgress}
+        >
+          <Icon
+            name="run-fast"
+            size={16}
+            color="white"
+          />
+          <Text style={styles.navButtonText}>Flee</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -408,19 +587,55 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     backgroundColor: "#f7f7f7",
+    justifyContent: "space-between",
   },
   playerSection: {
-    marginVertical: 10,
+    marginBottom: 10,
   },
-  battleSection: {
-    flex: 1,
+  playerName: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 5,
+  },
+  statsRow: {
+    flexDirection: "row",
     justifyContent: "space-between",
+  },
+  statBar: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  healthBar: {
+    width: "100%",
+    height: 8,
+    backgroundColor: "#e0e0e0",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  manaBar: {
+    width: "100%",
+    height: 8,
+    backgroundColor: "#e0e0e0",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  healthFill: {
+    height: "100%",
+    backgroundColor: "#ff5555",
+  },
+  manaFill: {
+    height: "100%",
+    backgroundColor: "#5555ff",
+  },
+  statText: {
+    fontSize: 12,
+    marginTop: 2,
   },
   enemiesContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    marginTop: 20,
+    marginBottom: 10,
   },
   enemyCard: {
     width: 100,
@@ -449,23 +664,150 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 5,
   },
-  healthBar: {
-    width: "100%",
-    height: 8,
-    backgroundColor: "#e0e0e0",
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  healthFill: {
-    height: "100%",
-    backgroundColor: "#ff5555",
-  },
   healthText: {
     fontSize: 12,
     marginTop: 2,
   },
+  narratorSection: {
+    marginVertical: 10,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    // NARRATOR SECTION - Centered
+    // narratorSection: {
+    //   flex: 1,
+    //   justifyContent: "center",
+    //   marginVertical: 10,
+  },
+  // SKILLS SECTION - Smaller with quick cast
   skillsSection: {
     marginVertical: 10,
+    maxHeight: 130,
+  },
+  skillsScrollView: {
+    maxHeight: 90,
+  },
+  skillButton: {
+    backgroundColor: "#7d5fff",
+    borderRadius: 8,
+    padding: 12,
+    marginRight: 10,
+    minWidth: 100,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  selectedSkill: {
+    backgroundColor: "#4922c9",
+    borderWidth: 2,
+    borderColor: "#ffdd00",
+  },
+  cooldownSkill: {
+    backgroundColor: "#9e9e9e",
+    opacity: 0.7,
+  },
+  unavailableSkill: {
+    backgroundColor: "#c55a5a",
+    opacity: 0.7,
+  },
+  skillName: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 14,
+    textAlign: "center",
+  },
+  skillCost: {
+    color: "#e0e0ff",
+    fontSize: 12,
+    marginTop: 4,
+  },
+  cooldownOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cooldownText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 18,
+  },
+
+  // Quick skills section
+  quickSkillsSection: {
+    marginTop: 5,
+    marginBottom: 10,
+  },
+  quickSkillsContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+  quickSkillButton: {
+    backgroundColor: "#9c27b0",
+    borderRadius: 8,
+    padding: 10,
+    marginHorizontal: 5,
+    minWidth: 80,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+    elevation: 2,
+  },
+  quickSkillName: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 12,
+    textAlign: "center",
+  },
+
+  // Status effects styling
+  statusEffectsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 5,
+  },
+  statusEffect: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 4,
+    marginBottom: 4,
+    backgroundColor: "#e0e0e0",
+  },
+  statusEffectText: {
+    fontSize: 10,
+    fontWeight: "500",
+  },
+  poisonEffect: {
+    backgroundColor: "#a5d6a7",
+  },
+  healEffect: {
+    backgroundColor: "#90caf9",
+  },
+  burnEffect: {
+    backgroundColor: "#ffab91",
+  },
+
+  narratorText: {
+    fontSize: 14,
+    textAlign: "center",
+    fontStyle: "italic",
+    color: "#333",
+    lineHeight: 20,
+  },
+  skillsScrollView: {
+    maxHeight: 90,
   },
   sectionTitle: {
     fontSize: 18,
@@ -473,29 +815,51 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     color: "#7d5fff",
   },
-  fleeButton: {
-    backgroundColor: "#ff5252",
+  noSkillsText: {
+    padding: 20,
+    fontStyle: "italic",
+    color: "#666",
+  },
+  // GAME NAVIGATION - Bottom controls with Skills button
+  gameNavigation: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 10,
+  },
+  navButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     borderRadius: 6,
-    alignItems: "center",
-    marginVertical: 10,
+    marginHorizontal: 4, // Reduced from 5 to fit 4 buttons
   },
-  fleeButtonText: {
+  navButtonText: {
     color: "white",
     fontWeight: "bold",
+    marginLeft: 5,
+    fontSize: 12, // Smaller text for 4 buttons
+  },
+  inventoryButton: {
+    backgroundColor: "#4CAF50", // Green
+  },
+  skillsButton: {
+    backgroundColor: "#9C27B0", // Purple
+  },
+  fleeButton: {
+    backgroundColor: "#ff5252", // Red
+  },
+  statsButton: {
+    backgroundColor: "#2196F3", // Blue
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
-  },
-  noSkillsText: {
-    padding: 20,
-    fontStyle: "italic",
-    color: "#666",
-  },
-  disabledButton: {
-    opacity: 0.5,
   },
 });

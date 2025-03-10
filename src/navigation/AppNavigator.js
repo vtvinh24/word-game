@@ -3,7 +3,8 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { MaterialIcons } from "@expo/vector-icons";
-
+import { getFocusedRouteNameFromRoute } from "@react-navigation/native";
+import { CardStyleInterpolators } from "@react-navigation/stack";
 import { GameContext } from "../contexts/GameContext";
 
 // Auth Screens
@@ -31,7 +32,12 @@ const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const GameStack = () => (
-  <Stack.Navigator>
+  <Stack.Navigator
+    screenOptions={{
+      headerShown: false,
+      cardStyleInterpolator: CardStyleInterpolators.forNoAnimation,
+    }}
+  >
     <Stack.Screen
       name="Lobby"
       component={LobbyScreen}
@@ -104,6 +110,18 @@ const MainTabs = () => (
       },
       tabBarActiveTintColor: "#7d5fff",
       tabBarInactiveTintColor: "gray",
+      // Hide tab bar based on which screen is active in the GameStack
+      tabBarStyle: (() => {
+        if (route.name !== "Game") return undefined;
+
+        const routeName = getFocusedRouteNameFromRoute(route);
+        const hideOnScreens = ["Singleplayer", "Battle", "Map", "Victory", "GameOver"];
+
+        if (hideOnScreens.includes(routeName)) {
+          return { display: "none" };
+        }
+        return undefined;
+      })(),
     })}
   >
     <Tab.Screen
@@ -135,7 +153,12 @@ const MainTabs = () => (
 );
 
 const AuthStack = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
+  <Stack.Navigator
+    screenOptions={{
+      headerShown: false,
+      cardStyleInterpolator: CardStyleInterpolators.forNoAnimation,
+    }}
+  >
     <Stack.Screen
       name="Login"
       component={LoginScreen}

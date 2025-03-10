@@ -1,0 +1,10 @@
+name: "Fireball"
+description: "Launches a ball of fire that explodes on impact."
+cost: "2a1n"
+target: "random:3"
+conditions:
+  - "self.mana >= 15"
+pattern: "fire_related"
+effectMin: 0.8
+effectMax: 1.8
+iconId: "fire_1.webp"

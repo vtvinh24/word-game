@@ -1,0 +1,10 @@
+name: "Healing Word"
+description: "A whispered word of power that mends wounds."
+cost: "S1v1n"
+target: "self"
+conditions:
+  - "self.hp < 75%"
+pattern: "healing_words"
+effectMin: 0.3
+effectMax: 1.0
+iconId: "heal_1.webp"
